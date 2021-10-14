@@ -1,0 +1,13 @@
+[package]
+name = "eth_whitelister"
+version = "0.1.0"
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+serenity = { version = "0.10", default-features = false, features = ["client", "gateway", "rustls_backend", "model", "unstable_discord_api"] }
+tokio = { version = "1.0", features = ["macros", "rt-multi-thread"] }
+web3 = "0.17"
+reqwest = { version = "0.11", default-features = false, features = ["json", "rustls-tls"]}
+serde_json = "1.0"
