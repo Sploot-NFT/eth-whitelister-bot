@@ -7,5 +7,5 @@ Create a file called `config.json` next to the executable. Its contents should b
 Also create a file called `whitelist.json` with contents `{}`
 
 ## Usage
-Just run the executable provided (Linux only unless you build from source). Then add the bot to your server. It will respond to `/whitelist [address]` and `/ping`.  
+Just run the [executable provided](https://github.com/Sploot-NFT/eth-whitelister-bot/releases/download/latest/eth_whitelister) (Linux only unless you build from source). Then add the bot to your server. It will respond to `/whitelist [address]` and `/ping`.  
 It will resolve ENS domains and validate the addresses, then store them in `whitelist.json` attached to the User ID.
