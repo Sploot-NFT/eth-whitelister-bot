@@ -23,9 +23,9 @@ use serenity::{
     prelude::*,
 };
 use serenity::model::prelude::RoleId;
-use serenity::builder::{CreateApplicationCommandPermissions, CreateApplicationCommandPermissionsData, CreateApplicationCommandPermissionData};
+use serenity::builder::{CreateApplicationCommandPermissionsData, CreateApplicationCommandPermissionData};
 use serenity::model::interactions::application_command::ApplicationCommandPermissionType;
-use serenity::model::id::{GuildId, CommandId};
+use serenity::model::id::{GuildId};
 
 struct Handler;
 
@@ -103,15 +103,15 @@ pub enum ConfigValue {
 }
 
 pub struct ConfigStruct {
-    Value: HashMap<String, ConfigValue>
+    _value: HashMap<String, ConfigValue>
 }
 
 impl TypeMapKey for ConfigStruct {
     type Value = HashMap<String, ConfigValue>;
 }
 
-async fn open_registrations(command: &ApplicationCommandInteraction, ctx: &Context) -> String {
-    let mut data = &mut ctx.data.write().await;
+async fn open_registrations(_command: &ApplicationCommandInteraction, ctx: &Context) -> String {
+    let data = &mut ctx.data.write().await;
 
     let deadline:ConfigValue = data.get::<ConfigStruct>().unwrap().get("deadline").unwrap().clone();
 
@@ -133,8 +133,8 @@ async fn open_registrations(command: &ApplicationCommandInteraction, ctx: &Conte
     return "Registrations opened.".to_string();
 }
 
-async fn close_registrations(command: &ApplicationCommandInteraction, ctx: &Context) -> String {
-    let mut data = &mut ctx.data.write().await;
+async fn close_registrations(_command: &ApplicationCommandInteraction, ctx: &Context) -> String {
+    let data = &mut ctx.data.write().await;
 
     let deadline:ConfigValue = data.get::<ConfigStruct>().unwrap().get("deadline").unwrap().clone();
 
@@ -157,7 +157,7 @@ async fn close_registrations(command: &ApplicationCommandInteraction, ctx: &Cont
 }
 
 async fn deadline(command: &ApplicationCommandInteraction, ctx: &Context) -> String {
-    let mut data = &mut ctx.data.write().await;
+    let data = &mut ctx.data.write().await;
 
     let open:ConfigValue = data.get::<ConfigStruct>().unwrap().get("open").unwrap().clone();
     let deadline:u64 = command.data.options.get(0).expect("Could not get first option")
@@ -180,6 +180,32 @@ async fn deadline(command: &ApplicationCommandInteraction, ctx: &Context) -> Str
     file.write_all(out.as_bytes()).expect("Failed to write to config.json");
 
     return "Deadline updated.".to_string();
+}
+
+async fn export(command: &ApplicationCommandInteraction, ctx: &Context) -> String {
+    command.channel_id.send_files(&ctx.http, ["whitelist.json"], |m| {
+        m.content("")
+    }).await.expect("Failed to export data");
+
+    return "Here it is \\:)".to_string();
+}
+
+async fn clear(command: &ApplicationCommandInteraction, _ctx: &Context) -> String {
+    let confirmation:String = command.data.options.get(0).expect("Could not get first option")
+            .value.as_ref().expect("Could not reference value")
+            .as_str().unwrap().to_string().parse().expect("Could not convert to string");
+
+    if confirmation != "confirm" {
+        return "please type `confirm` after the command".to_string();
+    }
+
+    let old = fs::read_to_string("whitelist.json").expect("Couldn't read whitelist.json");
+    let mut file = fs::File::create(format!("whitelist-backup-{}.json", &timestamp())).expect("Failed to open whitelist.json for writing");
+    file.write_all(old.as_bytes()).expect("Failed to write to whitelist-backup.json");
+    let mut file = fs::File::create("whitelist.json").expect("Failed to open whitelist.json for writing");
+    file.write_all("{}".as_bytes()).expect("Failed to write to whitelist.json");
+
+    return "Whitelist cleared!".to_string();
 }
 
 async fn whitelist(command: &ApplicationCommandInteraction, ctx: &Context) -> String {
@@ -255,37 +281,35 @@ impl EventHandler for Handler {
                             .required(true)
                     })
                 })
+                .create_application_command(|command| {
+                    command.name("export").description("Export whitelist").default_permission(false)
+                })
+                .create_application_command(|command| {
+                    command.name("clear").description("Clear whitelist").default_permission(false).create_option(|option| {
+                        option
+                            .name("confirmation")
+                            .description("Type confirm")
+                            .kind(ApplicationCommandOptionType::String)
+                            .required(true)
+                    })
+                })
 
         })
         .await.expect("Failed to register slash commands");
 
-        let close = commands.iter().find(|c| c.name == "close").unwrap();
-        let open = commands.iter().find(|c| c.name == "open").unwrap();
-        let deadline = commands.iter().find(|c| c.name == "deadline").unwrap();
-
-        let guild: u64 = config.get("admin_server").unwrap().as_str().expect("Admin server not found in config").parse().expect("Couldn't convert admin server to integer");
+        let guild: u64 = config.get("admin_server")
+            .unwrap().as_str().expect("Admin server not found in config").parse().expect("Couldn't convert admin server to integer");
         let guild = GuildId(guild);
-        guild.create_application_command_permission(&ctx.http,  close.id,|data: &mut CreateApplicationCommandPermissionsData| {
+
+        for command_name in ["close", "open", "deadline", "export", "clear"] { // List of admin commands
+            let command = commands.iter().find(|c| c.name == command_name).unwrap();
+            guild.create_application_command_permission(&ctx.http,  command.id,|data: &mut CreateApplicationCommandPermissionsData| {
                             data.create_permission(|permission: &mut CreateApplicationCommandPermissionData| {
                                 permission.kind(ApplicationCommandPermissionType::Role)
                                     .id(admin_role)
                                     .permission(true)
                             })}).await.expect("Unable to update command permission");
-
-        guild.create_application_command_permission(&ctx.http,  open.id,|data: &mut CreateApplicationCommandPermissionsData| {
-                            data.create_permission(|permission: &mut CreateApplicationCommandPermissionData| {
-                                permission.kind(ApplicationCommandPermissionType::Role)
-                                    .id(admin_role)
-                                    .permission(true)
-                            })}).await.expect("Unable to update command permission");
-
-        guild.create_application_command_permission(&ctx.http,  deadline.id,|data: &mut CreateApplicationCommandPermissionsData| {
-                            data.create_permission(|permission: &mut CreateApplicationCommandPermissionData| {
-                                permission.kind(ApplicationCommandPermissionType::Role)
-                                    .id(admin_role)
-                                    .permission(true)
-                            })}).await.expect("Unable to update command permission");
-
+        }
     }
 
     async fn interaction_create(&self, ctx: Context, interaction: Interaction) {
@@ -298,6 +322,8 @@ impl EventHandler for Handler {
                 "close" => close_registrations(&command, &ctx).await,
                 "open" => open_registrations(&command, &ctx).await,
                 "deadline" => deadline(&command, &ctx).await,
+                "export" => export(&command, &ctx).await,
+                "clear" => clear(&command, &ctx).await,
                 _ => "not implemented :(".to_string(),
             };
 
