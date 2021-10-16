@@ -1,6 +1,8 @@
 use std::fs;
 use std::io::Write;
 use std::collections::HashMap;
+use std::iter::FromIterator;
+
 use web3;
 use serde_json;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -20,6 +22,10 @@ use serenity::{
     },
     prelude::*,
 };
+use serenity::model::prelude::RoleId;
+use serenity::builder::{CreateApplicationCommandPermissions, CreateApplicationCommandPermissionsData, CreateApplicationCommandPermissionData};
+use serenity::model::interactions::application_command::ApplicationCommandPermissionType;
+use serenity::model::id::{GuildId, CommandId};
 
 struct Handler;
 
@@ -89,17 +95,102 @@ async fn update_whitelist(user_id: &str, address: &str) -> bool { // Returns boo
     return exists;
 }
 
-pub struct DeadlineStruct;
+#[derive(Copy, Clone)]
+pub enum ConfigValue {
+    U64(u64),
+    RoleId(RoleId),
+    Bool(bool),
+}
 
-impl serenity::prelude::TypeMapKey for DeadlineStruct {
-    type Value = u64;
+pub struct ConfigStruct {
+    Value: HashMap<String, ConfigValue>
+}
+
+impl TypeMapKey for ConfigStruct {
+    type Value = HashMap<String, ConfigValue>;
+}
+
+async fn open_registrations(command: &ApplicationCommandInteraction, ctx: &Context) -> String {
+    let mut data = &mut ctx.data.write().await;
+
+    let deadline:ConfigValue = data.get::<ConfigStruct>().unwrap().get("deadline").unwrap().clone();
+
+    let contents:HashMap<String, ConfigValue> = HashMap::from_iter([
+        ("deadline".to_string(), deadline),
+        ("open".to_string(), ConfigValue::Bool(true))
+    ]);
+    data.insert::<ConfigStruct>(contents);
+
+    let old = fs::read_to_string("config.json").expect("Couldn't read config.json");
+    let mut json: HashMap<String, serde_json::Value> = serde_json::from_str(&old)
+    .expect("config.json is not proper JSON");
+
+    json.insert("open".to_string(), serde_json::Value::from(true));
+    let out = serde_json::to_string_pretty(&json).expect("unable to serialize JSON");
+    let mut file = fs::File::create("config.json").expect("Failed to open config.json for writing");
+    file.write_all(out.as_bytes()).expect("Failed to write to config.json");
+
+    return "Registrations opened.".to_string();
+}
+
+async fn close_registrations(command: &ApplicationCommandInteraction, ctx: &Context) -> String {
+    let mut data = &mut ctx.data.write().await;
+
+    let deadline:ConfigValue = data.get::<ConfigStruct>().unwrap().get("deadline").unwrap().clone();
+
+    let contents:HashMap<String, ConfigValue> = HashMap::from_iter([
+        ("deadline".to_string(), deadline),
+        ("open".to_string(), ConfigValue::Bool(false))
+    ]);
+    data.insert::<ConfigStruct>(contents);
+
+    let old = fs::read_to_string("config.json").expect("Couldn't read config.json");
+    let mut json: HashMap<String, serde_json::Value> = serde_json::from_str(&old)
+    .expect("config.json is not proper JSON");
+
+    json.insert("open".to_string(), serde_json::Value::from(false));
+    let out = serde_json::to_string_pretty(&json).expect("unable to serialize JSON");
+    let mut file = fs::File::create("config.json").expect("Failed to open config.json for writing");
+    file.write_all(out.as_bytes()).expect("Failed to write to config.json");
+
+    return "Registrations closed.".to_string();
+}
+
+async fn deadline(command: &ApplicationCommandInteraction, ctx: &Context) -> String {
+    let mut data = &mut ctx.data.write().await;
+
+    let open:ConfigValue = data.get::<ConfigStruct>().unwrap().get("open").unwrap().clone();
+    let deadline:u64 = command.data.options.get(0).expect("Could not get first option")
+            .value.as_ref().expect("Could not reference value")
+            .as_str().unwrap().to_string().parse().expect("Could not convert to string");
+    let deadline_value:ConfigValue = ConfigValue::U64(deadline);
+    let contents:HashMap<String, ConfigValue> = HashMap::from_iter([
+        ("deadline".to_string(), deadline_value),
+        ("open".to_string(), open)
+    ]);
+    data.insert::<ConfigStruct>(contents);
+
+    let old = fs::read_to_string("config.json").expect("Couldn't read config.json");
+    let mut json: HashMap<String, serde_json::Value> = serde_json::from_str(&old)
+    .expect("config.json is not proper JSON");
+
+    json.insert("deadline".to_string(), serde_json::Value::from(deadline));
+    let out = serde_json::to_string_pretty(&json).expect("unable to serialize JSON");
+    let mut file = fs::File::create("config.json").expect("Failed to open config.json for writing");
+    file.write_all(out.as_bytes()).expect("Failed to write to config.json");
+
+    return "Deadline updated.".to_string();
 }
 
 async fn whitelist(command: &ApplicationCommandInteraction, ctx: &Context) -> String {
     let data = &ctx.data.read().await;
-    let deadline:&u64 = data.get::<DeadlineStruct>().unwrap();
+    let deadline:&u64 = match data.get::<ConfigStruct>().unwrap().get("deadline").unwrap() {ConfigValue::U64(x) => x, _ => &0};
     if &timestamp() > deadline {
         return "You missed the deadline, sorry!".to_string();
+    }
+    let open:&bool = match data.get::<ConfigStruct>().unwrap().get("open").unwrap() {ConfigValue::Bool(x) => x, _ => &false};
+    if open != &true {
+        return "Registrations are closed, sorry!".to_string();
     }
 
     let mut address = command.data.options.get(0).expect("Could not get first option")
@@ -130,8 +221,12 @@ async fn whitelist(command: &ApplicationCommandInteraction, ctx: &Context) -> St
 impl EventHandler for Handler {
     async fn ready(&self, ctx: Context, ready: Ready) {
         println!("{} is connected!", ready.user.name);
+        let config = fs::read_to_string("config.json").expect("Couldn't read config.json");  // Read config file in
+        let config: HashMap<String, serde_json::Value> = serde_json::from_str(&config)  // Convert config string into HashMap
+            .expect("config.json is not proper JSON");
+        let admin_role: u64 = config.get("admin_role").unwrap().as_str().expect("Admin role not found in config").parse().expect("Couldn't convert admin role to integer");
 
-        ApplicationCommand::set_global_application_commands(&ctx.http, |commands| {
+        let commands = ApplicationCommand::set_global_application_commands(&ctx.http, |commands| {
             commands
                 .create_application_command(|command| {
                     command.name("ping").description("A ping command")
@@ -145,8 +240,51 @@ impl EventHandler for Handler {
                             .required(true)
                     })
                 })
+                .create_application_command(|command| {
+                    command.name("close").description("Close registrations").default_permission(false)
+                })
+                .create_application_command(|command| {
+                    command.name("open").description("Open registrations").default_permission(false)
+                })
+                .create_application_command(|command| {
+                    command.name("deadline").description("Update deadline").default_permission(false).create_option(|option| {
+                        option
+                            .name("timestamp")
+                            .description("A unix timestamp, registrations will automatically be closed past this point")
+                            .kind(ApplicationCommandOptionType::String)
+                            .required(true)
+                    })
+                })
+
         })
         .await.expect("Failed to register slash commands");
+
+        let close = commands.iter().find(|c| c.name == "close").unwrap();
+        let open = commands.iter().find(|c| c.name == "open").unwrap();
+        let deadline = commands.iter().find(|c| c.name == "deadline").unwrap();
+
+        let guild: u64 = config.get("admin_server").unwrap().as_str().expect("Admin server not found in config").parse().expect("Couldn't convert admin server to integer");
+        let guild = GuildId(guild);
+        guild.create_application_command_permission(&ctx.http,  close.id,|data: &mut CreateApplicationCommandPermissionsData| {
+                            data.create_permission(|permission: &mut CreateApplicationCommandPermissionData| {
+                                permission.kind(ApplicationCommandPermissionType::Role)
+                                    .id(admin_role)
+                                    .permission(true)
+                            })}).await.expect("Unable to update command permission");
+
+        guild.create_application_command_permission(&ctx.http,  open.id,|data: &mut CreateApplicationCommandPermissionsData| {
+                            data.create_permission(|permission: &mut CreateApplicationCommandPermissionData| {
+                                permission.kind(ApplicationCommandPermissionType::Role)
+                                    .id(admin_role)
+                                    .permission(true)
+                            })}).await.expect("Unable to update command permission");
+
+        guild.create_application_command_permission(&ctx.http,  deadline.id,|data: &mut CreateApplicationCommandPermissionsData| {
+                            data.create_permission(|permission: &mut CreateApplicationCommandPermissionData| {
+                                permission.kind(ApplicationCommandPermissionType::Role)
+                                    .id(admin_role)
+                                    .permission(true)
+                            })}).await.expect("Unable to update command permission");
 
     }
 
@@ -156,7 +294,10 @@ impl EventHandler for Handler {
                 "ping" => "Hey, I'm alive!".to_string(),
                 "whitelist" => {
                     whitelist(&command, &ctx).await
-                }
+                },
+                "close" => close_registrations(&command, &ctx).await,
+                "open" => open_registrations(&command, &ctx).await,
+                "deadline" => deadline(&command, &ctx).await,
                 _ => "not implemented :(".to_string(),
             };
 
@@ -185,7 +326,13 @@ async fn main() {
         .trim()
         .parse()
         .expect("application id is not a valid id");
-    let deadline: u64 = config.get("deadline").unwrap().as_str().expect("Deadline not found in config").parse().expect("Couldn't convert deadline to integer");
+
+    let deadline: ConfigValue = ConfigValue::U64(config.get("deadline").unwrap().as_u64().expect("Deadline not found in config or couldn't be converted into integer"));
+    let open: ConfigValue = ConfigValue::Bool(config.get("open").unwrap().as_bool().expect("Open not found in config or couldn't be converted into bool"));
+    let contents:HashMap<String, ConfigValue> = HashMap::from_iter([
+            ("deadline".to_string(), deadline),
+            ("open".to_string(), open)
+        ]);
 
     let mut client = Client::builder(token)
         .event_handler(Handler)
@@ -195,7 +342,7 @@ async fn main() {
 
     {
         let mut data = client.data.write().await;
-        data.insert::<DeadlineStruct>(deadline);
+        data.insert::<ConfigStruct>(contents);
     }
 
     // Finally, start a single shard, and start listening to events.
