@@ -2,10 +2,37 @@
 Allow Discord users to whitelist one Eth address in a JSON file.
 
 ## Setup
-Create a file called `config.json` next to the executable. Its contents should be as follows:  
-`{"token": "DISCORD_TOKEN", "application_id": "DISCORD_APPLICATION_ID", "deadline": "UNIX_TIMESTAMP, beyond which registrations are closed"}`  
-Also create a file called `whitelist.json` with contents `{}`
+`curl -o install.sh https://github.com/Sploot-NFT/eth-whitelister-bot/releases/download/latest/install.sh`  
+`chmod +x install.sh`  
+`sudo ./install.sh`  
+
+The installer will ask you to input the details it needs and will be installed as a system service.
 
 ## Usage
-Just run the [executable provided](https://github.com/Sploot-NFT/eth-whitelister-bot/releases/download/latest/eth_whitelister) (Linux only unless you build from source). Then add the bot to your server. It will respond to `/whitelist [address]` and `/ping`.  
-It will resolve ENS domains and validate the addresses, then store them in `whitelist.json` attached to the User ID.
+### Whitelist
+`/whitelist murrax2.eth`  
+Whitelists your Eth address.  
+
+### Ping
+`/ping`  
+Verify the bot is connected.
+
+### Open (Admin role only)
+`/open`
+Open submissions
+
+### Close (Admin role only)
+`/close`  
+Close submissions  
+
+### Deadline (Admin role only)
+`/deadline 1634566307`  
+Sets the deadline in Unix time (submissions are automatically closed after this point)  
+
+### Export (Admin role only)
+`/export`  
+Uploads the whitelist to Discord  
+
+### Clear (Admin role only)
+`/clear confirm`
+Clears the whitelist, but creates a backup in `/usr/local/bin/eth-whitelister`  

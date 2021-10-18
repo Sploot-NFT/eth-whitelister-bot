@@ -1,0 +1,10 @@
+[Unit]
+Description=Eth Whitelister Discord Bot
+Documentation=https://github.com/Sploot-NFT/eth-whitelister-bot
+
+[Service]
+WorkingDirectory=/usr/local/bin/eth-whitelister/
+ExecStart=/usr/local/bin/eth-whitelister/eth-whitelister
+
+[Install]
+WantedBy=multi-user.target
