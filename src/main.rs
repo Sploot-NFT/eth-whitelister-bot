@@ -251,8 +251,12 @@ impl EventHandler for Handler {
         let config: HashMap<String, serde_json::Value> = serde_json::from_str(&config)  // Convert config string into HashMap
             .expect("config.json is not proper JSON");
         let admin_role: u64 = config.get("admin_role").unwrap().as_str().expect("Admin role not found in config").parse().expect("Couldn't convert admin role to integer");
+        let guild: u64 = config.get("admin_server")
+            .unwrap().as_str().expect("Admin server not found in config").parse().expect("Couldn't convert admin server to integer");
+        let guild = GuildId(guild);
 
-        let commands = ApplicationCommand::set_global_application_commands(&ctx.http, |commands| {
+
+        let commands = guild.set_application_commands(&ctx.http, |commands| {
             commands
                 .create_application_command(|command| {
                     command.name("ping").description("A ping command")
@@ -297,9 +301,8 @@ impl EventHandler for Handler {
         })
         .await.expect("Failed to register slash commands");
 
-        let guild: u64 = config.get("admin_server")
-            .unwrap().as_str().expect("Admin server not found in config").parse().expect("Couldn't convert admin server to integer");
-        let guild = GuildId(guild);
+
+
 
         for command_name in ["close", "open", "deadline", "export", "clear"] { // List of admin commands
             let command = commands.iter().find(|c| c.name == command_name).unwrap();
